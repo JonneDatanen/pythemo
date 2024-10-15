@@ -1,7 +1,7 @@
 import httpx
 
-from pythemo.constants import BASE_URL
-from pythemo.models import Device
+from .constants import BASE_URL
+from .models import Device
 
 
 class ThemoClient:

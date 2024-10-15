@@ -2,12 +2,11 @@ from typing import Any
 
 import httpx
 
-from pythemo.constants import BASE_URL
+from .constants import BASE_URL
 
 
 def get_token(username: str, password: str) -> str:
-    """
-    Obtain an authentication token using the provided username and password.
+    """Obtain an authentication token using the provided username and password.
 
     :param username: The username for authentication.
     :param password: The password for authentication.
@@ -30,5 +29,5 @@ def get_token(username: str, password: str) -> str:
 
         if response.status_code == 200 and "access_token" in data:
             return data["access_token"]
-        else:
-            raise ValueError(f"Error obtaining token: {response.text}")
+
+        raise ValueError(f"Error obtaining token: {response.text}")

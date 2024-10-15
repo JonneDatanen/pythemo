@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from pythemo.constants import BASE_URL
+from .constants import BASE_URL
 
 
 class Device:
