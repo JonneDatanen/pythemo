@@ -1,3 +1,5 @@
+"""Provides a client for interacting with the Themo API."""
+
 import httpx
 
 from .constants import BASE_URL
@@ -21,6 +23,7 @@ class ThemoClient:
         self._client = client or httpx.AsyncClient()
 
     async def authenticate(self):
+        """Authenticate the client and obtain an access token."""
         response = await self._client.post(
             f"{BASE_URL}/token",
             headers={
@@ -44,11 +47,16 @@ class ThemoClient:
         )
 
     async def get_client_id(self):
+        """Retrieve and set the client ID."""
         response = await self._client.get(f"{BASE_URL}/api/clients/me")
         data = response.json()
         self.client_id = data.get("ID")
 
     async def get_all_devices(self):
+        """Retrieve all devices associated with the authenticated client.
+
+        :return: A list of Device instances.
+        """
         response = await self._client.get(f"{BASE_URL}/Api/Devices")
         devices_data = response.json()
 

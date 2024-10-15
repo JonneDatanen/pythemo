@@ -1,5 +1,7 @@
+"""Module containing the Device class to represent a Themo device and manage its state. and attributes."""
+
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -7,7 +9,9 @@ from .constants import BASE_URL
 
 
 class Device:
-    STATE_ATTRIBUTES: Dict[str, str] = {
+    """A class to represent a Themo device and manage its state and attributes."""
+
+    STATE_ATTRIBUTES: dict[str, str] = {
         "floor_temperature": "FloorT",
         "info": "Info",
         "lights": "Lights",
@@ -18,25 +22,25 @@ class Device:
         "room_temperature": "RT",
     }
 
-    def __init__(self, id: str, token: str, client) -> None:
+    def __init__(self, id: str, client) -> None:
         """Initialize a Device instance."""
         self.id: str = id
         self._client = client
 
-        self.name: Optional[str] = None
-        self.device_id: Optional[str] = None
+        self.name: str | None = None
+        self.device_id: str | None = None
 
-        self.active_schedule: Optional[str] = None
-        self.available_schedules: List[str] = []
+        self.active_schedule: str | None = None
+        self.available_schedules: list[str] = []
 
-        self.floor_temperature: Optional[float] = None
-        self.info: Optional[str] = None
-        self.lights: Optional[bool] = None
-        self.manual_temperature: Optional[float] = None
-        self.max_power: Optional[float] = None
-        self.mode: Optional[str] = None
-        self.power: Optional[float] = None
-        self.room_temperature: Optional[float] = None
+        self.floor_temperature: float | None = None
+        self.info: str | None = None
+        self.lights: bool | None = None
+        self.manual_temperature: float | None = None
+        self.max_power: float | None = None
+        self.mode: str | None = None
+        self.power: float | None = None
+        self.room_temperature: float | None = None
 
     def __repr__(self) -> str:
         """Return a string representation of the Device instance."""
@@ -44,8 +48,8 @@ class Device:
 
     async def _api_request(
         self, method: str, endpoint: str, **kwargs: Any
-    ) -> Dict[str, Any]:
-        """Helper method to make API requests."""
+    ) -> dict[str, Any]:
+        """Make API requests."""
         url: str = f"{BASE_URL}/{endpoint}"
         response: httpx.Response = await getattr(self._client, method)(url, **kwargs)
         response.raise_for_status()
@@ -54,12 +58,12 @@ class Device:
         except json.JSONDecodeError:
             pass
 
-    def _update_attributes(self, data: Dict[str, Any]) -> None:
-        """Helper method to update device attributes."""
+    def _update_attributes(self, data: dict[str, Any]) -> None:
+        """Update device attributes."""
         self.name = data.get("DeviceName")
         self.device_id = data.get("DeviceID")
 
-        state_data: Dict[str, Any] = data.get("State", {})
+        state_data: dict[str, Any] = data.get("State", {})
         self._update_state_attributes(state_data)
 
     async def update_state(self):
@@ -89,20 +93,20 @@ class Device:
         schedules_data = await self._get_schedules_data()
         self._update_schedules(schedules_data)
 
-    def _update_schedules(self, schedules_data: List[Dict[str, Any]]) -> None:
-        """Helper method to update device schedules based on the provided data."""
+    def _update_schedules(self, schedules_data: list[dict[str, Any]]) -> None:
+        """Update device schedules based on the provided data."""
         self.available_schedules = [schedule["Name"] for schedule in schedules_data]
         for schedule in schedules_data:
             if schedule["Active"]:
                 self.active_schedule = schedule["Name"]
 
-    async def _get_device_data(self) -> Dict[str, Any]:
+    async def _get_device_data(self) -> dict[str, Any]:
         return await self._api_request("get", f"api/devices/{self.id}")
 
-    async def _get_state_data(self) -> Dict[str, Any]:
+    async def _get_state_data(self) -> dict[str, Any]:
         return await self._api_request("get", f"api/devices/{self.id}/state")
 
-    async def _get_schedules_data(self) -> List[Dict[str, Any]]:
+    async def _get_schedules_data(self) -> list[dict[str, Any]]:
         params = {"api-version": "2.0"}
         return await self._api_request(
             "get", f"api/devices/{self.id}/schedules/temperature", params=params
@@ -117,7 +121,7 @@ class Device:
 
     async def set_lights(self, state: bool) -> None:
         """Set the lights state."""
-        payload: Dict[str, str] = {"CLights": "1" if state else "0"}
+        payload: dict[str, str] = {"CLights": "1" if state else "0"}
         await self._api_request(
             "post", f"Api/Devices/{self.id}/Message/Lights", json=payload
         )
@@ -125,15 +129,16 @@ class Device:
 
     async def set_manual_temperature(self, temperature: int) -> None:
         """Set the lights state."""
-        payload: Dict[str, str] = {"CMT": str(temperature)}
+        payload: dict[str, str] = {"CMT": str(temperature)}
         await self._api_request(
             "post", f"Api/Devices/{self.id}/Message/Temperature", json=payload
         )
         self.manual_temperature = temperature
 
     async def update_schedules(self) -> None:
-        params: Dict[str, str] = {"api-version": "2.0"}
-        data: List[Dict[str, Any]] = await self._api_request(
+        """Fetch and update the device schedules."""
+        params: dict[str, str] = {"api-version": "2.0"}
+        data: list[dict[str, Any]] = await self._api_request(
             "get", f"api/devices/{self.id}/schedules/temperature", params=params
         )
         self.available_schedules = [schedule["Name"] for schedule in data]
@@ -160,7 +165,7 @@ class Device:
         if mode not in ("Manual", "Off", "SLS"):
             raise ValueError
 
-        payload: Dict[str, str] = {"CMode": mode}
+        payload: dict[str, str] = {"CMode": mode}
         await self._api_request(
             "post",
             f"api/devices/{self.id}/message/mode",
