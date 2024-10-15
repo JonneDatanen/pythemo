@@ -20,6 +20,7 @@ class Device:
         "mode": "Mode",
         "power": "Power",
         "room_temperature": "RT",
+        "sw_version": "SW",
     }
 
     def __init__(self, id: str, client) -> None:
