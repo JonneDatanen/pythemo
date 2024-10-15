@@ -18,17 +18,10 @@ class Device:
         "room_temperature": "RT",
     }
 
-    def __init__(self, id: str, token: str) -> None:
+    def __init__(self, id: str, token: str, client) -> None:
         """Initialize a Device instance."""
         self.id: str = id
-        self.token: str = token
-        self._client: httpx.AsyncClient = httpx.AsyncClient(
-            headers={
-                "Authorization": f"Bearer {self.token}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            }
-        )
+        self._client = client
 
         self.name: Optional[str] = None
         self.device_id: Optional[str] = None
