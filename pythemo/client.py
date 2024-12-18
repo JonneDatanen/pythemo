@@ -93,7 +93,10 @@ class ThemoClient:
 
         :return: A list of Device instances.
         """
-        response = await self._client.get(f"{BASE_URL}/Api/Devices")
+        response = await self._client.get(
+            f"{BASE_URL}/Api/Devices",
+            params={"pageSize": -1},
+        )
         devices_data = response.json()
 
         return [
