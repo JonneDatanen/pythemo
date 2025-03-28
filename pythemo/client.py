@@ -61,6 +61,7 @@ class ThemoClient:
                     "username": self.username,
                     "password": self.password,
                 },
+                params={"api-version": 2},
             )
             data = response.json()
 
@@ -84,7 +85,10 @@ class ThemoClient:
 
     async def get_client_id(self):
         """Retrieve and set the client ID."""
-        response = await self._client.get(f"{BASE_URL}/api/clients/me")
+        response = await self._client.get(
+            f"{BASE_URL}/api/clients/me",
+            params={"api-version": 2},
+        )
         data = response.json()
         self.client_id = data.get("ID")
 
@@ -95,7 +99,10 @@ class ThemoClient:
         """
         response = await self._client.get(
             f"{BASE_URL}/Api/Devices",
-            params={"pageSize": -1},
+            params={
+                "pageSize": -1,
+                "api-version": 2,
+            },
         )
         devices_data = response.json()
 
