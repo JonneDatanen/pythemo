@@ -52,6 +52,12 @@ class Device:
     ) -> dict[str, Any]:
         """Make API requests."""
         url: str = f"{BASE_URL}/{endpoint}"
+
+        # Ensure params dictionary exists and includes api-version
+        if "params" not in kwargs:
+            kwargs["params"] = {}
+        kwargs["params"]["api-version"] = 2
+
         response: httpx.Response = await getattr(self._client, method)(url, **kwargs)
         response.raise_for_status()
         try:
@@ -110,7 +116,7 @@ class Device:
     async def _get_schedules_data(self) -> list[dict[str, Any]]:
         params = {"api-version": "2.0"}
         return await self._api_request(
-            "get", f"api/devices/{self.id}/schedules/temperature", params=params
+            "get", f"api/devices/{self.id}/schedules/temperature"
         )
 
     def _update_state_attributes(self, state_data):
@@ -154,10 +160,7 @@ class Device:
 
         await self._api_request(
             "put",
-            (
-                f"api/devices/{self.id}/schedules/temperature/switch?"
-                f"scheduleName={schedule_name.replace(' ', '+')}&api-version=2.0"
-            ),
+            f"api/devices/{self.id}/schedules/temperature/switch?scheduleName={schedule_name.replace(' ', '+')}",
         )
         self.active_schedule = schedule_name
 
