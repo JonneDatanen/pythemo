@@ -1,116 +1,252 @@
-"""Provides a client for interacting with the Themo API."""
+"""Module containing the Client class for interacting with Themo API."""
+
+from typing import Any, cast
 
 import httpx
 
-from .constants import BASE_URL
-from .models import Device
+from pythemo.models import Device
+from pythemo.utils import request
 
 
 class ThemoAuthenticationError(Exception):
     """Exception raised for errors in the authentication process."""
 
-    def __init__(self, message: str, response: httpx.Response):
+    def __init__(self, message: str, response: httpx.Response | None = None) -> None:
+        """Initialize the error with a message and response."""
         self.message = message
         self.response = response
         super().__init__(self.message)
 
-    def __str__(self):
-        return f"{self.message} (status code: {self.response.status_code})"
+    def __str__(self) -> str:
+        """Return a string representation of the error."""
+        if self.response:
+            return f"{self.message} (status code: {self.response.status_code})"
+        return self.message
 
 
 class ThemoConnectionError(Exception):
     """Exception raised for connection errors."""
 
-    def __init__(self, message: str, response: httpx.Response = None):
+    def __init__(self, message: str, response: httpx.Response | None = None) -> None:
+        """Initialize the error with a message and optional response."""
         self.message = message
         self.response = response
         super().__init__(self.message)
 
-    def __str__(self):
+    def __str__(self) -> str:
+        """Return a string representation of the error."""
         if self.response:
             return f"{self.message} (status code: {self.response.status_code})"
         return self.message
 
 
 class ThemoClient:
-    """Client for interacting with the Themo API."""
+    """A class to represent a client for interacting with Themo API."""
 
-    def __init__(self, username, password, client=None) -> None:
-        """Initialize the ThemoClient with username, password, and an optional HTTP client.
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        client: httpx.AsyncClient | None = None,  # Add support for custom client
+    ) -> None:
+        """Initialize a Client instance.
 
-        :param username: The username for authentication.
-        :param password: The password for authentication.
-        :param client: An optional HTTP client instance.
+        Args:
+            username: The username for authentication
+            password: The password for authentication
+            client: Optional custom httpx AsyncClient instance
+
         """
+        self._client = client if client is not None else httpx.AsyncClient()
+        self._environments: list[dict[str, Any]] = []
         self.username = username
         self.password = password
-        self.token = None
-        self.client_id = None
-        self._client = client or httpx.AsyncClient()
 
-    async def authenticate(self):
-        """Authenticate the client and obtain an access token."""
+    async def authenticate(self) -> None:
+        """Authenticate with the Themo API using the credentials."""
         try:
-            response = await self._client.post(
-                f"{BASE_URL}/token",
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded",
+            # Perform login to get token
+            login_response = await request(
+                self._client,
+                "post",
+                "api/auth/login",
+                json={
+                    "Username": self.username,
+                    "Password": self.password,
                 },
-                data={
-                    "grant_type": "password",
-                    "username": self.username,
-                    "password": self.password,
-                },
-                params={"api-version": 2},
             )
-            data = response.json()
+        except (httpx.ConnectTimeout, httpx.ReadTimeout) as e:
+            # Handle all timeout errors the same way
+            msg = f"Connection timeout while connecting to the API: {e}"
+            raise ThemoConnectionError(msg) from e
+        except httpx.HTTPError as e:
+            # General HTTP error handling
+            msg = "Authentication failed"
+            raise ThemoAuthenticationError(msg) from e
+        except Exception as e:
+            # Catch-all for other errors
+            msg = f"Unexpected error during authentication: {e}"
+            raise ThemoConnectionError(msg) from e
 
-            if response.status_code != 200:
-                raise ThemoAuthenticationError(
-                    data.get("error_description", "Unknown error"),
-                    response,
-                )
+        # Extract token
+        token = login_response.get("Token")
+        if not token:
+            msg = "Authentication failed: No token received"
+            raise ThemoAuthenticationError(msg)
 
-            self.token = data["access_token"]
+        # Add the token to the client headers
+        self._client.headers.update({"Authorization": f"Bearer {token}"})
 
-            self._client.headers.update(
-                {
-                    "Authorization": f"Bearer {self.token}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                }
-            )
-        except httpx.RequestError as e:
-            raise ThemoConnectionError("Failed to connect to Themo API") from e
+        # Get environments
+        await self.get_environments()
 
-    async def get_client_id(self):
-        """Retrieve and set the client ID."""
-        response = await self._client.get(
-            f"{BASE_URL}/api/clients/me",
-            params={"api-version": 2},
+    # Environment operations
+    async def get_environments(self) -> list[dict[str, Any]]:
+        """Get all environments for the authenticated user."""
+        self._environments = cast(
+            "list[dict[str, Any]]",
+            await request(self._client, "get", "api/environments"),
         )
-        data = response.json()
-        self.client_id = data.get("ID")
+        return self._environments
 
-    async def get_all_devices(self):
-        """Retrieve all devices associated with the authenticated client.
+    # Device discovery
+    async def get_all_devices(self) -> list["Device"]:
+        """Get all devices across all environments for the authenticated user."""
+        # Make sure we have environments
+        if not self._environments:
+            await self.get_environments()
 
-        :return: A list of Device instances.
+        devices = []
+
+        # Then fetch devices for each environment
+        for env in self._environments:
+            env_id = env.get("Id")
+            if env_id is None:
+                continue
+            env_devices = cast(
+                "list[dict[str, Any]]",
+                await request(
+                    self._client,
+                    "get",
+                    f"api/environments/{env_id}/devices",
+                    params={"state": True},
+                ),
+            )
+            for device_data in env_devices:
+                device_id = device_data.get("Id")
+                if device_id is not None:
+                    device = Device(str(device_id), str(env_id), self)
+                    device.update_attributes(device_data)
+                    devices.append(device)
+
+        return devices
+
+    async def get_device(
+        self,
+        environment_id: str,
+        device_id: str,
+    ) -> "Device":
+        """Get a specific device by its environment ID and device ID."""
+        device = Device(device_id, environment_id, self)
+        await device.update_state()
+        return device
+
+    # Device operations API
+    async def get_device_data(
+        self,
+        environment_id: str,
+        device_id: str,
+    ) -> dict[str, Any]:
+        """Get device data with state information."""
+        try:
+            return await request(
+                self._client,
+                "get",
+                f"api/environments/{environment_id}/devices/{device_id}",
+                params={"state": True},  # Always request state data
+            )
+        except Exception as e:
+            msg = "Failed to get device data"
+            raise ThemoConnectionError(msg, response=None) from e
+
+    async def get_device_schedules(
+        self,
+        environment_id: str,
+        device_id: str,
+    ) -> list[dict[str, Any]]:
+        """Get device schedules.
+
+        Returns an empty list on error or if no schedules are found.
         """
-        response = await self._client.get(
-            f"{BASE_URL}/Api/Devices",
-            params={
-                "pageSize": -1,
-                "api-version": 2,
+        return cast(
+            "list[dict[str, Any]]",
+            await request(
+                self._client,
+                "get",
+                f"api/environments/{environment_id}/devices/{device_id}/schedules",
+            ),
+        )
+
+    async def set_device_lights(
+        self,
+        environment_id: str,
+        device_id: str,
+        state: bool,
+    ) -> None:
+        """Set device lights state."""
+        await request(
+            self._client,
+            "post",
+            f"api/environments/{environment_id}/devices/{device_id}/commands/message",
+            json={"CLights": 1 if state else 0},
+        )
+
+    async def set_device_temperature(
+        self,
+        environment_id: str,
+        device_id: str,
+        temperature: float,
+    ) -> None:
+        """Set device temperature."""
+        await request(
+            self._client,
+            "post",
+            f"api/environments/{environment_id}/devices/{device_id}/commands/message",
+            json={"CMT": temperature},
+        )
+
+    async def set_device_mode(
+        self,
+        environment_id: str,
+        device_id: str,
+        mode: str,
+    ) -> None:
+        """Set device operation mode."""
+        if mode not in ("Manual", "Off", "SLS"):
+            msg = f"Invalid mode: {mode}"
+            raise ValueError(msg)
+
+        await request(
+            self._client,
+            "post",
+            f"api/environments/{environment_id}/devices/{device_id}/commands/message",
+            json={"CMode": mode},
+        )
+
+    async def update_schedule(
+        self,
+        environment_id: str,
+        device_id: str,
+        schedule_id: str,
+        schedule_name: str,
+    ) -> None:
+        """Update a schedule to be active."""
+        await request(
+            self._client,
+            "put",
+            f"api/environments/{environment_id}/devices/{device_id}/schedules/{schedule_id}",
+            json={
+                "Name": schedule_name,
+                "Active": True,
             },
         )
-        devices_data = response.json()
-
-        return [
-            Device(id=item["ID"], client=self._client)
-            for item in devices_data["Devices"]
-        ]
-
-    async def close(self):
-        """Close the client session."""
-        await self._client.aclose()
