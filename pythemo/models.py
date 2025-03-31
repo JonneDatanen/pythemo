@@ -1,17 +1,15 @@
-"""Module containing the Device class to represent a Themo device and manage its state. and attributes."""
+"""Module containing the Device class to represent a Themo device and its state."""
 
-import json
-from typing import Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
-import httpx
-
-from .constants import BASE_URL
+if TYPE_CHECKING:
+    from pythemo.client import ThemoClient
 
 
 class Device:
     """A class to represent a Themo device and manage its state and attributes."""
 
-    STATE_ATTRIBUTES: dict[str, str] = {
+    STATE_ATTRIBUTES: ClassVar[dict[str, str]] = {
         "floor_temperature": "FloorT",
         "info": "Info",
         "lights": "Lights",
@@ -23,9 +21,15 @@ class Device:
         "sw_version": "SW",
     }
 
-    def __init__(self, id: str, client) -> None:
+    def __init__(
+        self,
+        device_id: str,
+        environment_id: str,
+        client: "ThemoClient",
+    ) -> None:
         """Initialize a Device instance."""
-        self.id: str = id
+        self.id: str = device_id
+        self.environment_id: str = environment_id
         self._client = client
 
         self.name: str | None = None
@@ -47,57 +51,38 @@ class Device:
         """Return a string representation of the Device instance."""
         return f"<Themo(id={self.id!r}, name={self.name!r}>"
 
-    async def _api_request(
-        self, method: str, endpoint: str, **kwargs: Any
-    ) -> dict[str, Any]:
-        """Make API requests."""
-        url: str = f"{BASE_URL}/{endpoint}"
-
-        # Ensure params dictionary exists and includes api-version
-        if "params" not in kwargs:
-            kwargs["params"] = {}
-        kwargs["params"]["api-version"] = 2
-
-        response: httpx.Response = await getattr(self._client, method)(url, **kwargs)
-        response.raise_for_status()
-        try:
-            return response.json()
-        except json.JSONDecodeError:
-            pass
-
-    def _update_attributes(self, data: dict[str, Any]) -> None:
+    def update_attributes(self, data: dict[str, Any]) -> None:
         """Update device attributes."""
-        self.name = data.get("DeviceName")
-        self.device_id = data.get("DeviceID")
+        self.name = data.get("Name")
+        self.device_id = data.get("DeviceId")
 
         state_data: dict[str, Any] = data.get("State", {})
         self._update_state_attributes(state_data)
 
-    async def update_state(self):
+    async def update_state(self) -> None:
         """Primary method to update the device state."""
-        if not self.is_initialized():
-            await self.fetch_initial_data()
-        else:
-            await self.fetch_current_state()
+        await self.fetch_data()
         await self.fetch_schedules()
 
-    def is_initialized(self) -> bool:
-        """Determine if the device has been initialized."""
-        return self.device_id is not None
-
-    async def fetch_initial_data(self):
+    async def fetch_data(self) -> dict[str, Any]:
         """Fetch and set the initial data for the device."""
-        device_data = await self._get_device_data()
-        self._update_attributes(device_data)
+        device_data = await self._client.get_device_data(
+            self.environment_id,
+            self.id,
+        )
+        self.update_attributes(device_data)
+        return device_data
 
-    async def fetch_current_state(self):
+    async def fetch_current_state(self) -> None:
         """Update only the current state of the device."""
-        state_data = await self._get_state_data()
-        self._update_state_attributes(state_data)
+        await self.fetch_data()
 
-    async def fetch_schedules(self):
+    async def fetch_schedules(self) -> None:
         """Fetch and update device schedules."""
-        schedules_data = await self._get_schedules_data()
+        schedules_data = await self._client.get_device_schedules(
+            self.environment_id,
+            self.id,
+        )
         self._update_schedules(schedules_data)
 
     def _update_schedules(self, schedules_data: list[dict[str, Any]]) -> None:
@@ -107,19 +92,8 @@ class Device:
             if schedule["Active"]:
                 self.active_schedule = schedule["Name"]
 
-    async def _get_device_data(self) -> dict[str, Any]:
-        return await self._api_request("get", f"api/devices/{self.id}")
-
-    async def _get_state_data(self) -> dict[str, Any]:
-        return await self._api_request("get", f"api/devices/{self.id}/state")
-
-    async def _get_schedules_data(self) -> list[dict[str, Any]]:
-        params = {"api-version": "2.0"}
-        return await self._api_request(
-            "get", f"api/devices/{self.id}/schedules/temperature"
-        )
-
-    def _update_state_attributes(self, state_data):
+    def _update_state_attributes(self, state_data: dict[str, Any]) -> None:
+        """Update device state attributes."""
         for attr, key in self.STATE_ATTRIBUTES.items():
             value = state_data.get(key)
             if attr == "lights":
@@ -128,51 +102,59 @@ class Device:
 
     async def set_lights(self, state: bool) -> None:
         """Set the lights state."""
-        payload: dict[str, str] = {"CLights": "1" if state else "0"}
-        await self._api_request(
-            "post", f"Api/Devices/{self.id}/Message/Lights", json=payload
+        await self._client.set_device_lights(
+            self.environment_id,
+            self.id,
+            state,
         )
         self.lights = state
 
     async def set_manual_temperature(self, temperature: int) -> None:
-        """Set the lights state."""
-        payload: dict[str, str] = {"CMT": str(temperature)}
-        await self._api_request(
-            "post", f"Api/Devices/{self.id}/Message/Temperature", json=payload
+        """Set the manual temperature."""
+        await self._client.set_device_temperature(
+            self.environment_id,
+            self.id,
+            temperature,
         )
         self.manual_temperature = temperature
 
-    async def update_schedules(self) -> None:
-        """Fetch and update the device schedules."""
-        params: dict[str, str] = {"api-version": "2.0"}
-        data: list[dict[str, Any]] = await self._api_request(
-            "get", f"api/devices/{self.id}/schedules/temperature", params=params
+    async def set_mode(self, mode: str) -> None:
+        """Set the device mode."""
+        await self._client.set_device_mode(
+            self.environment_id,
+            self.id,
+            mode,
         )
-        self.available_schedules = [schedule["Name"] for schedule in data]
-        for schedule in data:
-            if schedule["Active"]:
-                self.active_schedule = schedule["Name"]
+        self.mode = mode
 
     async def set_active_schedule(self, schedule_name: str) -> None:
         """Switch to a different schedule."""
         if schedule_name not in self.available_schedules:
-            raise ValueError(f"Invalid schedule name: {schedule_name}")
+            msg = f"Invalid schedule name: {schedule_name}"
+            raise ValueError(msg)
 
-        await self._api_request(
-            "put",
-            f"api/devices/{self.id}/schedules/temperature/switch?scheduleName={schedule_name.replace(' ', '+')}",
+        # Find the schedule ID for the given name
+        schedules = await self._client.get_device_schedules(
+            self.environment_id,
+            self.id,
         )
+
+        schedule_id = None
+        for schedule in schedules:
+            if schedule["Name"] == schedule_name:
+                schedule_id = schedule["Id"]
+                break
+
+        if not schedule_id:
+            msg = f"Could not find ID for schedule: {schedule_name}"
+            raise ValueError(msg)
+
+        # Update the schedule to be active
+        await self._client.update_schedule(
+            self.environment_id,
+            self.id,
+            schedule_id,
+            schedule_name,
+        )
+
         self.active_schedule = schedule_name
-
-    async def set_mode(self, mode: str) -> None:
-        """Switch to a different schedule."""
-        if mode not in ("Manual", "Off", "SLS"):
-            raise ValueError
-
-        payload: dict[str, str] = {"CMode": mode}
-        await self._api_request(
-            "post",
-            f"api/devices/{self.id}/message/mode",
-            json=payload,
-        )
-        self.mode = mode
