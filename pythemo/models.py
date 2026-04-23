@@ -17,6 +17,7 @@ class Device:
         "max_power": "MP",
         "mode": "Mode",
         "power": "Power",
+        "load_state": "LS",
         "room_temperature": "RT",
         "sw_version": "SW",
     }
@@ -41,6 +42,7 @@ class Device:
         self.floor_temperature: float | None = None
         self.info: str | None = None
         self.lights: bool | None = None
+        self.load_state: int | None = None
         self.manual_temperature: float | None = None
         self.max_power: float | None = None
         self.mode: str | None = None
