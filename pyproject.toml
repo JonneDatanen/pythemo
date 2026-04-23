@@ -1,0 +1,18 @@
+[project]
+name = "pythemo"
+version = "0.3.1"
+description = "A Python client for Themo smart thermostats"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+  { name = "Jonne Haapalainen", email = "jonne.haapalainen@gmail.com" },
+]
+requires-python = ">=3.10"
+dependencies = ["httpx"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = []
