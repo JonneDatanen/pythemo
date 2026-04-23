@@ -40,6 +40,90 @@ To use this library, you need to:
 
 - `httpx`: A fully featured HTTP client for Python 3.
 
+## Testing
+
+The project includes integration tests for the client in `tests/test_client.py`.
+These tests call the real Themo API (no mocks). You can run them with either a bearer token or username/password credentials.
+
+### Install test dependencies
+
+```powershell
+python -m pip install -U pytest httpx
+```
+
+### Set environment variables
+
+You can authenticate test requests in either of these ways:
+- Bearer token (`THEMO_TOKEN`) for read-only API calls
+- Username/password (`THEMO_USERNAME`, `THEMO_PASSWORD`) for the `authenticate()` integration test
+
+PowerShell (Windows):
+
+Bearer token (for token-based tests):
+
+```powershell
+$env:THEMO_TOKEN = "YOUR_BEARER_TOKEN"
+```
+
+Username/password (for `authenticate()` test):
+
+```powershell
+$env:THEMO_USERNAME = "your-email@example.com"
+$env:THEMO_PASSWORD = "your-password"
+```
+
+Optional (enables device-specific tests):
+
+```powershell
+$env:THEMO_ENV_ID = "123"
+$env:THEMO_DEVICE_ID = "456"
+```
+
+Git Bash:
+
+Bearer token (for token-based tests):
+
+```bash
+export THEMO_TOKEN="YOUR_BEARER_TOKEN"
+```
+
+Username/password (for `authenticate()` test):
+
+```bash
+export THEMO_USERNAME="your-email@example.com"
+export THEMO_PASSWORD="your-password"
+```
+
+Optional (enables device-specific tests):
+
+```bash
+export THEMO_ENV_ID="123"
+export THEMO_DEVICE_ID="456"
+```
+
+### Run tests
+
+Use `python -m pytest` instead of `pytest` on Windows to avoid PATH / interpreter mismatch issues.
+
+PowerShell:
+
+```powershell
+python -m pytest -q tests\\test_client.py -s
+```
+
+Git Bash:
+
+```bash
+python -m pytest -q tests/test_client.py -s
+```
+
+Notes:
+- If `THEMO_TOKEN` is not set, token-based integration tests will be skipped.
+- If `THEMO_USERNAME` and `THEMO_PASSWORD` are not set, the `authenticate()` integration test will be skipped.
+- If `THEMO_ENV_ID` and `THEMO_DEVICE_ID` are not set, device-specific integration tests will be skipped.
+- Current integration tests are read-only and do not send control commands.
+
+
 ## Contributions
 
 Contributions to the `pythemo` repository are welcome. Please ensure that you follow the coding conventions and write tests for any new features or changes.
